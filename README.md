@@ -6,66 +6,36 @@ Supports multiple named instances (project + dataset + token + apiVersion), JSON
 
 ## Install
 
-The binary must end up in a directory that's **already in `$PATH`** so it can
-be invoked as plain `sanity-cli`. Don't drop it in the project's working
-directory or `$HOME` root — agents and shells expect it on `$PATH`.
-
-Pick the first writable directory from this list that's already in `$PATH`:
-
-1. `~/.local/bin` (no sudo, preferred)
-2. `~/bin` (no sudo)
-3. `/usr/local/bin` (needs sudo)
-
-A shell snippet that resolves the right one:
+### One-liner (Linux/macOS)
 
 ```bash
-INSTALL_DIR=$(
-  for d in "$HOME/.local/bin" "$HOME/bin" /usr/local/bin; do
-    case ":$PATH:" in *":$d:"*)
-      if [ -w "$d" ] || [ "$(id -u)" -eq 0 ]; then echo "$d"; break; fi
-    esac
-  done
-)
-echo "Will install to: $INSTALL_DIR"
+curl -fsSL https://raw.githubusercontent.com/vstratful/sanity-cli/main/install.sh | sh
 ```
 
-If none of those are on `$PATH`, add `~/.local/bin` to `$PATH` first
-(append `export PATH="$HOME/.local/bin:$PATH"` to `~/.bashrc` /
-`~/.zshrc`) and create the directory.
+The installer detects your OS/arch, picks a writable directory already on
+`$PATH` (in priority: `~/.local/bin`, `~/bin`, `/usr/local/bin`; falls back
+to `~/.local/bin` and warns if nothing is on `$PATH`), downloads the matching
+release tarball, verifies the SHA-256 checksum, and installs `sanity-cli`.
 
-### Option A — go install (if Go is available)
+Optional environment variables:
+
+| Var | Purpose |
+| --- | --- |
+| `SANITY_CLI_VERSION` | Pin a release (e.g. `v0.1.1`). Defaults to the latest release. |
+| `SANITY_CLI_INSTALL_DIR` | Override install location. |
+| `SANITY_CLI_NO_VERIFY=1` | Skip checksum verification (not recommended). |
+
+### Other options
 
 ```bash
+# go install (requires Go)
 go install github.com/vstratful/sanity-cli@latest
-# binary lands at $(go env GOPATH)/bin/sanity-cli — ensure that's on $PATH
+
+# build from a clone
+git clone https://github.com/vstratful/sanity-cli.git && cd sanity-cli && go build
 ```
 
-### Option B — prebuilt binary from Releases
-
-```bash
-# Detect platform
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-ARCH=$(uname -m); case "$ARCH" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; esac
-
-# Resolve the latest tag (vX.Y.Z) and strip the leading 'v' for the asset name
-TAG=$(curl -fsSL https://api.github.com/repos/vstratful/sanity-cli/releases/latest | grep -m1 '"tag_name"' | cut -d'"' -f4)
-VERSION=${TAG#v}
-
-# Download + extract
-curl -fsSL "https://github.com/vstratful/sanity-cli/releases/download/${TAG}/sanity-cli_${VERSION}_${OS}_${ARCH}.tar.gz" \
-  | tar -xz -C "$INSTALL_DIR" sanity-cli
-chmod +x "$INSTALL_DIR/sanity-cli"
-sanity-cli --version
-```
-
-### Option C — build from source
-
-```bash
-git clone https://github.com/vstratful/sanity-cli.git
-cd sanity-cli
-go build -o "$INSTALL_DIR/sanity-cli"
-sanity-cli --version
-```
+Windows: download the `.zip` from [Releases](https://github.com/vstratful/sanity-cli/releases) and place `sanity-cli.exe` somewhere on `%PATH%`.
 
 ## Quick start
 
