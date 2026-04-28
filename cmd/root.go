@@ -33,12 +33,16 @@ introspects the live dataset to produce a schema document, and uploads assets.
 
 Output is JSON-first by default; pass --pretty for indented JSON.
 
-Examples:
-  sanity-cli init
+Examples (agent/script-friendly — flag-based):
+  sanity-cli instance add prod --project <id> --dataset <name> --token <sk...> --current
   sanity-cli instance list --pretty
   sanity-cli query '*[_type=="post"][0..2]{_id,title}' --pretty
   sanity-cli schema introspect --pretty
-  sanity-cli mutate ./mutations.json --confirm`,
+  sanity-cli mutate ./mutations.json --confirm
+
+Run 'sanity-cli agent-setup' for a structured guide intended for AI agents.
+
+Interactive alternative for humans: 'sanity-cli init' (prompts on stdin).`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
