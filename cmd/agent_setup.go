@@ -72,15 +72,30 @@ A typical config.json looks like:
 
 ## Commands
 
-  sanity-cli init                                 First-run wizard
-  sanity-cli instance add <name> --project ... --dataset ... --token ...
+  # NOTE for agents: prefer flag-based commands. 'init' and the bare
+  # 'instance switch' (no name) are INTERACTIVE — they read from stdin /
+  # render a TUI picker and will hang or fail under automation.
+
+  sanity-cli instance add <name> --project ... --dataset ... --token ... [--api-version ...] [--current]
   sanity-cli instance list
-  sanity-cli instance switch [name]               Interactive picker if no name
+  sanity-cli instance switch <name>               # always pass a name from automation
   sanity-cli instance show [name]
   sanity-cli instance remove <name> --yes
 
+  # Interactive (humans only):
+  sanity-cli init                                 # prompts on stdin
+  sanity-cli instance switch                      # opens a bubbletea picker
+
   sanity-cli query '<groq>' [--params '<json>'] [--raw]
   sanity-cli mutate [file|-] --confirm [--dry-run] [--return-ids] [--return-documents]
+    # Input is a BARE JSON ARRAY of mutation objects — NOT {"mutations":[...]}.
+    # (The wrapper shape is also tolerated, but the bare array is canonical.)
+    # Example file contents:
+    #   [
+    #     {"patch":  {"id": "<docId>", "set": {"title": "Updated"}}},
+    #     {"create": {"_type": "post", "title": "New post"}},
+    #     {"delete": {"id": "<docId>"}}
+    #   ]
 
   sanity-cli schema introspect [--sample-size N] [--max-depth N] [--no-cache] [--resolve-references]
   sanity-cli schema show [--refresh]
@@ -105,13 +120,28 @@ output, --instance <name> to override the active instance.
 The 'query' subcommand additionally accepts --raw to strip the envelope and
 emit the bare GROQ result for direct piping into 'jq'.
 
-## Recommended workflow
+## Recommended workflow (agents/automation)
 
-  1. sanity-cli init                              # capture credentials
-  2. sanity-cli schema introspect --pretty        # learn the data model
-  3. sanity-cli query '*[_type == "post"][0..2]'  # read
-  4. sanity-cli mutate ./changes.json --dry-run   # preview a write
-  5. sanity-cli mutate ./changes.json --confirm   # apply
+The two configuration paths below are equivalent. Pick one — do not run the
+interactive 'init' command.
+
+  Option A — persist credentials in config:
+    sanity-cli instance add prod \
+        --project <id> --dataset <name> --token <sk...> --current
+    # subsequent commands use the saved instance
+
+  Option B — pass credentials per invocation via env (no config file needed):
+    export SANITY_PROJECT_ID=<id>
+    export SANITY_DATASET=<name>
+    export SANITY_TOKEN=<sk...>
+    # the env trio overrides config; useful in CI
+
+Then:
+
+  1. sanity-cli schema introspect --pretty        # learn the data model
+  2. sanity-cli query '*[_type == "post"][0..2]'  # read
+  3. sanity-cli mutate ./changes.json --dry-run   # preview a write
+  4. sanity-cli mutate ./changes.json --confirm   # apply
 `, desc, resolvedPath, config.DefaultAPIVersion, config.DefaultPerspective)
 }
 

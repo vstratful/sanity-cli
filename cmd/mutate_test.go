@@ -39,12 +39,14 @@ func TestReadMutationsRejectsBadInput(t *testing.T) {
 		name string
 		body string
 	}{
-		{"not array", `{"create":{"_type":"note"}}`},
+		{"single mutation object", `{"create":{"_type":"note"}}`},
 		{"empty", ``},
 		{"empty array", `[]`},
 		{"non-object element", `["create"]`},
 		{"no recognised key", `[{"upsert":{"_type":"note"}}]`},
 		{"two recognised keys", `[{"create":{},"patch":{}}]`},
+		{"unwrapped object with no mutations key", `{"foo":"bar"}`},
+		{"not json", `not json at all`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -57,6 +59,66 @@ func TestReadMutationsRejectsBadInput(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReadMutationsAcceptsWrappedShape(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "m.json")
+	body := `{
+	  "mutations": [
+	    {"patch": {"id": "x", "set": {"title": "B"}}},
+	    {"create": {"_type": "note", "title": "A"}}
+	  ]
+	}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	muts, err := readMutations(path)
+	if err != nil {
+		t.Fatalf("readMutations: %v", err)
+	}
+	if len(muts) != 2 {
+		t.Errorf("len=%d, want 2", len(muts))
+	}
+}
+
+func TestReadMutationsErrorMessages(t *testing.T) {
+	cases := []struct {
+		name      string
+		body      string
+		mustMatch string
+	}{
+		{"single object hint", `{"patch":{"id":"x","set":{"k":"v"}}}`, "single mutation object"},
+		{"plain object hint", `{"foo":"bar"}`, "expected a JSON array"},
+		{"not json", `garbage`, "not valid JSON"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "m.json")
+			if err := os.WriteFile(path, []byte(c.body), 0o600); err != nil {
+				t.Fatalf("WriteFile: %v", err)
+			}
+			_, err := readMutations(path)
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", c.mustMatch)
+			}
+			if !contains(err.Error(), c.mustMatch) {
+				t.Errorf("error %q does not contain %q", err.Error(), c.mustMatch)
+			}
+		})
+	}
+}
+
+func contains(s, sub string) bool {
+	return len(sub) == 0 || (len(s) >= len(sub) && (s == sub || indexOf(s, sub) >= 0))
+}
+func indexOf(s, sub string) int {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
 }
 
 func TestReadMutationsAllValidKinds(t *testing.T) {

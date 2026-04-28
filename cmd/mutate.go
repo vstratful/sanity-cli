@@ -32,14 +32,23 @@ var mutateCmd = &cobra.Command{
 	Short: "Apply mutations from a JSON file or stdin (requires --confirm)",
 	Long: `Apply a list of Sanity mutations to the active dataset.
 
-Input is a JSON array where each element is a single mutation object with
-exactly one of: create, createOrReplace, createIfNotExists, patch, delete.
+Input shape (preferred): a JSON array where each element is a single mutation
+object with exactly one of: create, createOrReplace, createIfNotExists,
+patch, delete. The Sanity-HTTP-body shape {"mutations":[...]} is also accepted
+and silently unwrapped.
 
 Pass "-" or omit the file to read from stdin.
 
 Mutations are refused unless --confirm is set OR SANITY_CLI_AUTO_CONFIRM=1 in
 the environment. --dry-run always supersedes; the mutation is parsed and
 previewed but never sent.
+
+Example file:
+  [
+    {"patch":  {"id": "<docId>", "set": {"title": "Updated"}}},
+    {"create": {"_type": "post", "title": "New post"}},
+    {"delete": {"id": "<docId>"}}
+  ]
 
 Examples:
   sanity-cli mutate ./mutations.json --confirm
@@ -138,8 +147,14 @@ func runMutate(cmd *cobra.Command, args []string) error {
 }
 
 // readMutations parses the input file (or stdin when source == "-") into a
-// slice of raw mutation objects, validating that each element is an object
-// containing exactly one recognised mutation key.
+// slice of raw mutation objects.
+//
+// Accepts either:
+//   - A bare JSON array of mutation objects: [{"patch":{...}}, ...]
+//   - A wrapper object matching Sanity's HTTP body: {"mutations":[{...}, ...]}
+//
+// The wrapper form is silently unwrapped because Sanity's online docs mostly
+// show that shape; agents reaching for it shouldn't have to translate.
 func readMutations(source string) ([]json.RawMessage, error) {
 	var data []byte
 	var err error
@@ -155,9 +170,9 @@ func readMutations(source string) ([]json.RawMessage, error) {
 		return nil, errors.New("input is empty")
 	}
 
-	var arr []json.RawMessage
-	if err := json.Unmarshal(data, &arr); err != nil {
-		return nil, fmt.Errorf("input must be a JSON array of mutation objects: %w", err)
+	arr, err := parseMutationInput(data)
+	if err != nil {
+		return nil, err
 	}
 	if len(arr) == 0 {
 		return nil, errors.New("input array is empty")
@@ -179,6 +194,41 @@ func readMutations(source string) ([]json.RawMessage, error) {
 		}
 	}
 	return arr, nil
+}
+
+// parseMutationInput accepts either a bare JSON array of mutation objects or
+// a wrapper object of the form {"mutations":[...]} (Sanity's HTTP body shape)
+// and returns the array of raw mutation objects.
+func parseMutationInput(data []byte) ([]json.RawMessage, error) {
+	// Bare array — preferred form.
+	var arr []json.RawMessage
+	if err := json.Unmarshal(data, &arr); err == nil {
+		return arr, nil
+	}
+
+	// Wrapper object: {"mutations":[...]}.
+	var wrapped struct {
+		Mutations []json.RawMessage `json:"mutations"`
+	}
+	if err := json.Unmarshal(data, &wrapped); err == nil && wrapped.Mutations != nil {
+		return wrapped.Mutations, nil
+	}
+
+	// Single mutation object — common mistake; give a targeted hint.
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(data, &probe); err == nil {
+		for _, key := range validMutationKeys {
+			if _, ok := probe[key]; ok {
+				return nil, fmt.Errorf(
+					"input is a single mutation object; wrap it in an array: [{\"%s\":{...}}]", key)
+			}
+		}
+		return nil, errors.New(
+			`expected a JSON array of mutation objects, e.g. [{"patch":{"id":"x","set":{"k":"v"}}}]; ` +
+				`a {"mutations":[...]} wrapper is also accepted`)
+	}
+
+	return nil, errors.New("input is not valid JSON")
 }
 
 func summarizeMutations(mutations []json.RawMessage) (map[string]int, json.RawMessage) {
