@@ -1,0 +1,6 @@
+/sanity-cli
+/dist/
+*.test
+*.out
+.env
+.env.local
